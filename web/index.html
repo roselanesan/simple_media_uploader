@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Media Uploader - Cloudflare R2</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+        .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+        .card { background: #1a1d27; border-radius: 12px; padding: 30px; margin: 20px 0; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+        .hidden { display: none !important; }
+        h1 { color: #f8fafc; margin-bottom: 20px; font-size: 28px; }
+        h2 { color: #cbd5e1; margin-bottom: 15px; font-size: 20px; }
+        input[type="text"], input[type="password"], input[type="file"] {
+            width: 100%; padding: 12px; margin: 8px 0; background: #0f1117;
+            border: 1px solid #2d3138; border-radius: 8px; color: #e2e8f0; font-size: 14px;
+        }
+        button {
+            width: 100%; padding: 12px; margin: 8px 0; background: #f38020; color: #fff;
+            border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;
+        }
+        button:hover { background: #d96d15; }
+        .btn-secondary { background: #2d3138; }
+        .btn-secondary:hover { background: #3a3f47; }
+        .btn-danger { background: #dc2626; width: auto; padding: 6px 12px; font-size: 13px; }
+        .btn-danger:hover { background: #b91c1c; }
+        .btn-small { width: auto; padding: 6px 12px; font-size: 13px; }
+        .message { padding: 12px; border-radius: 8px; margin: 10px 0; font-size: 14px; }
+        .message.success { background: #064e3b; color: #34d399; }
+        .message.error { background: #7f1d1d; color: #fca5a5; }
+        .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .topbar button { width: auto; padding: 8px 16px; }
+        .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin-top: 20px; }
+        .media-card { background: #0f1117; border-radius: 8px; overflow: hidden; border: 1px solid #2d3138; }
+        .media-card img { width: 100%; height: 180px; object-fit: cover; cursor: pointer; }
+        .media-card .info { padding: 12px; }
+        .media-card .name { font-size: 14px; color: #e2e8f0; word-break: break-all; margin-bottom: 8px; }
+        .media-card .meta { font-size: 12px; color: #94a3b8; margin-bottom: 10px; }
+        .media-card .actions { display: flex; gap: 8px; }
+        .empty { text-align: center; padding: 40px; color: #64748b; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="auth-section" class="card">
+            <h1>Media Uploader</h1>
+            <div id="login-form">
+                <h2>Login</h2>
+                <input type="text" id="login-username" placeholder="Username">
+                <input type="password" id="login-password" placeholder="Password">
+                <button onclick="login()">Login</button>
+                <button class="btn-secondary btn-small" onclick="showRegister()">Belum punya akun? Register</button>
+            </div>
+            <div id="register-form" class="hidden">
+                <h2>Register</h2>
+                <input type="text" id="reg-username" placeholder="Username">
+                <input type="password" id="reg-password" placeholder="Password (min 6 karakter)">
+                <button onclick="register()">Register</button>
+                <button class="btn-secondary btn-small" onclick="showLogin()">Sudah punya akun? Login</button>
+            </div>
+            <div id="auth-message"></div>
+        </div>
+
+        <div id="app-section" class="hidden">
+            <div class="card">
+                <div class="topbar">
+                    <h1>Media Gallery</h1>
+                    <button class="btn-secondary" onclick="logout()">Logout</button>
+                </div>
+                <div id="upload-area">
+                    <input type="file" id="file-input">
+                    <button onclick="uploadFile()">Upload ke Cloudflare R2</button>
+                </div>
+                <div id="app-message"></div>
+            </div>
+            <div class="card">
+                <div id="gallery" class="gallery"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API = '/api';
+        let token = localStorage.getItem('token') || '';
+
+        if (token) showApp();
+
+        function showLogin() {
+            document.getElementById('login-form').classList.remove('hidden');
+            document.getElementById('register-form').classList.add('hidden');
+        }
+
+        function showRegister() {
+            document.getElementById('login-form').classList.add('hidden');
+            document.getElementById('register-form').classList.remove('hidden');
+        }
+
+        function showApp() {
+            document.getElementById('auth-section').classList.add('hidden');
+            document.getElementById('app-section').classList.remove('hidden');
+            loadGallery();
+        }
+
+        function showAuth() {
+            document.getElementById('auth-section').classList.remove('hidden');
+            document.getElementById('app-section').classList.add('hidden');
+        }
+
+        function authHeaders() {
+            return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+        }
+
+        async function register() {
+            const username = document.getElementById('reg-username').value;
+            const password = document.getElementById('reg-password').value;
+            const res = await fetch(API + '/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json();
+            if (data.status) {
+                showMessage('auth-message', 'Registrasi berhasil, silakan login', 'success');
+                showLogin();
+            } else {
+                showMessage('auth-message', data.pesan, 'error');
+            }
+        }
+
+        async function login() {
+            const username = document.getElementById('login-username').value;
+            const password = document.getElementById('login-password').value;
+            const res = await fetch(API + '/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json();
+            if (data.status) {
+                token = data.data.token;
+                localStorage.setItem('token', token);
+                showApp();
+            } else {
+                showMessage('auth-message', data.pesan, 'error');
+            }
+        }
+
+        function logout() {
+            token = '';
+            localStorage.removeItem('token');
+            showAuth();
+        }
+
+        async function uploadFile() {
+            const fileInput = document.getElementById('file-input');
+            const file = fileInput.files[0];
+            if (!file) {
+                showMessage('app-message', 'Pilih file dulu', 'error');
+                return;
+            }
+
+            // Step 1: Get presigned URL
+            const presignRes = await fetch(API + '/upload/presigned', {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({
+                    filename: file.name,
+                    mime_type: file.type,
+                    size: file.size
+                })
+            });
+            const presignData = await presignRes.json();
+            if (!presignData.status) {
+                showMessage('app-message', presignData.pesan, 'error');
+                return;
+            }
+
+            // Step 2: Upload directly to R2
+            const uploadRes = await fetch(presignData.data.presigned_url, {
+                method: 'PUT',
+                headers: { 'Content-Type': file.type },
+                body: file
+            });
+            if (!uploadRes.ok) {
+                showMessage('app-message', 'Gagal upload ke R2', 'error');
+                return;
+            }
+
+            // Step 3: Confirm upload
+            const confirmRes = await fetch(API + '/upload/confirm', {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({
+                    r2_key: presignData.data.r2_key,
+                    filename: file.name,
+                    mime_type: file.type,
+                    size: file.size
+                })
+            });
+            const confirmData = await confirmRes.json();
+            if (confirmData.status) {
+                showMessage('app-message', 'Upload berhasil!', 'success');
+                fileInput.value = '';
+                loadGallery();
+            } else {
+                showMessage('app-message', confirmData.pesan, 'error');
+            }
+        }
+
+        async function loadGallery() {
+            const res = await fetch(API + '/media', { headers: authHeaders() });
+            const data = await res.json();
+            if (!data.status) {
+                showMessage('app-message', data.pesan, 'error');
+                return;
+            }
+            renderGallery(data.data);
+        }
+
+        async function getMediaURL(id) {
+            const res = await fetch(API + '/media/' + id + '/url', { headers: authHeaders() });
+            const data = await res.json();
+            if (data.status) {
+                window.open(data.data.url, '_blank');
+            } else {
+                showMessage('app-message', data.pesan, 'error');
+            }
+        }
+
+        async function deleteMedia(id) {
+            if (!confirm('Yakin hapus file ini?')) return;
+            const res = await fetch(API + '/media/' + id, {
+                method: 'DELETE',
+                headers: authHeaders()
+            });
+            const data = await res.json();
+            if (data.status) {
+                showMessage('app-message', 'File dihapus', 'success');
+                loadGallery();
+            } else {
+                showMessage('app-message', data.pesan, 'error');
+            }
+        }
+
+        function renderGallery(media) {
+            const gallery = document.getElementById('gallery');
+            if (media.length === 0) {
+                gallery.innerHTML = '<div class="empty">Belum ada file. Upload sekarang!</div>';
+                return;
+            }
+            gallery.innerHTML = '';
+            media.forEach(item => {
+                const isImage = item.mime_type.startsWith('image/');
+                const card = document.createElement('div');
+                card.className = 'media-card';
+                card.innerHTML = (
+                    (isImage ? '<img src="" data-id="' + item.id + '" onclick="getMediaURL(' + item.id + ')">' : '<div style="height:180px;display:flex;align-items:center;justify-content:center;background:#1a1d27;color:#64748b;">📄 ' + item.mime_type + '</div>') +
+                    '<div class="info">' +
+                        '<div class="name">' + item.filename + '</div>' +
+                        '<div class="meta">' + formatSize(item.size) + ' • ' + item.created_at + '</div>' +
+                        '<div class="actions">' +
+                            '<button class="btn-small" onclick="getMediaURL(' + item.id + ')">Lihat</button>' +
+                            '<button class="btn-danger" onclick="deleteMedia(' + item.id + ')">Hapus</button>' +
+                        '</div>' +
+                    '</div>'
+                );
+                gallery.appendChild(card);
+                if (isImage) {
+                    const img = card.querySelector('img');
+                    getMediaURLPromise(item.id).then(url => { img.src = url; });
+                }
+            });
+        }
+
+        async function getMediaURLPromise(id) {
+            const res = await fetch(API + '/media/' + id + '/url', { headers: authHeaders() });
+            const data = await res.json();
+            return data.status ? data.data.url : '';
+        }
+
+        function formatSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / 1048576).toFixed(1) + ' MB';
+        }
+
+        function showMessage(el, msg, type) {
+            const div = document.getElementById(el);
+            div.innerHTML = '<div class="message ' + type + '">' + msg + '</div>';
+            setTimeout(() => { div.innerHTML = ''; }, 5000);
+        }
+    </script>
+</body>
+</html>
