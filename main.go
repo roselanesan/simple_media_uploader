@@ -34,6 +34,7 @@ func main() {
 		authGroup := api.Group("")
 		authGroup.Use(middleware.JWTAuth(jwtSecret))
 		{
+			authGroup.POST("/upload", media.DirectUpload)
 			authGroup.POST("/upload/presigned", media.CreatePresignedURL)
 			authGroup.POST("/upload/confirm", media.ConfirmUpload)
 			authGroup.GET("/media", media.ListMedia)

@@ -93,6 +93,59 @@ func (h *MediaHandler) CreatePresignedURL(c *gin.Context) {
 	})
 }
 
+func (h *MediaHandler) DirectUpload(c *gin.Context) {
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"status": false, "pesan": "File tidak ditemukan"})
+		return
+	}
+	defer file.Close()
+
+	userID := c.GetInt("user_id")
+
+	ext := ""
+	if idx := strings.LastIndex(header.Filename, "."); idx != -1 {
+		ext = header.Filename[idx:]
+	}
+	r2Key := fmt.Sprintf("uploads/%d/%d%s", userID, time.Now().UnixMilli(), ext)
+
+	contentType := header.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	_, err = h.S3Client.PutObject(context.TODO(), &s3.PutObjectInput{
+		Bucket:      aws.String(h.Bucket),
+		Key:         aws.String(r2Key),
+		Body:        file,
+		ContentType: aws.String(contentType),
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"status": false, "pesan": "Gagal upload ke R2: " + err.Error()})
+		return
+	}
+
+	res, err := h.DB.Exec(
+		"INSERT INTO media (user_id, filename, r2_key, mime_type, size, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+		userID, header.Filename, r2Key, contentType, header.Size, time.Now(),
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"status": false, "pesan": "Gagal simpan metadata"})
+		return
+	}
+
+	id, _ := res.LastInsertId()
+	c.JSON(http.StatusCreated, gin.H{
+		"status": true,
+		"pesan":  "Upload berhasil",
+		"data": gin.H{
+			"id":       id,
+			"filename": header.Filename,
+			"r2_key":   r2Key,
+		},
+	})
+}
+
 func (h *MediaHandler) ConfirmUpload(c *gin.Context) {
 	var input struct {
 		R2Key    string `json:"r2_key" binding:"required"`

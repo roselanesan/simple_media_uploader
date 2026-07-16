@@ -160,51 +160,21 @@
                 return;
             }
 
-            // Step 1: Get presigned URL
-            const presignRes = await fetch(API + '/upload/presigned', {
-                method: 'POST',
-                headers: authHeaders(),
-                body: JSON.stringify({
-                    filename: file.name,
-                    mime_type: file.type,
-                    size: file.size
-                })
-            });
-            const presignData = await presignRes.json();
-            if (!presignData.status) {
-                showMessage('app-message', presignData.pesan, 'error');
-                return;
-            }
+            const formData = new FormData();
+            formData.append('file', file);
 
-            // Step 2: Upload directly to R2
-            const uploadRes = await fetch(presignData.data.presigned_url, {
-                method: 'PUT',
-                headers: { 'Content-Type': file.type },
-                body: file
-            });
-            if (!uploadRes.ok) {
-                showMessage('app-message', 'Gagal upload ke R2', 'error');
-                return;
-            }
-
-            // Step 3: Confirm upload
-            const confirmRes = await fetch(API + '/upload/confirm', {
+            const res = await fetch(API + '/upload', {
                 method: 'POST',
-                headers: authHeaders(),
-                body: JSON.stringify({
-                    r2_key: presignData.data.r2_key,
-                    filename: file.name,
-                    mime_type: file.type,
-                    size: file.size
-                })
+                headers: { 'Authorization': 'Bearer ' + token },
+                body: formData
             });
-            const confirmData = await confirmRes.json();
-            if (confirmData.status) {
+            const data = await res.json();
+            if (data.status) {
                 showMessage('app-message', 'Upload berhasil!', 'success');
                 fileInput.value = '';
                 loadGallery();
             } else {
-                showMessage('app-message', confirmData.pesan, 'error');
+                showMessage('app-message', data.pesan, 'error');
             }
         }
 
