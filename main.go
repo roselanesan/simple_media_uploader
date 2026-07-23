@@ -114,14 +114,21 @@ func initR2() *s3.Client {
 }
 
 func initWhatsApp() *whatsapp.Client {
-	dbHost := os.Getenv("DB_HOST")
-	dbPort := os.Getenv("DB_PORT")
-	dbUser := os.Getenv("DB_USER")
-	dbPass := os.Getenv("DB_PASS")
-	dbName := os.Getenv("DB_NAME")
+	dbPath := os.Getenv("WHATSAPP_DB_PATH")
+	if dbPath == "" {
+		dbPath = "store/whatsapp.db"
+	}
+	_ = os.MkdirAll(storeDirOf(dbPath), 0o755)
+	return whatsapp.NewClient(dbPath)
+}
 
-	dsn := dbUser + ":" + dbPass + "@tcp(" + dbHost + ":" + dbPort + ")/" + dbName + "?charset=utf8mb4&parseTime=True&loc=Local"
-	return whatsapp.NewClient(dsn)
+func storeDirOf(p string) string {
+	for i := len(p) - 1; i >= 0; i-- {
+		if p[i] == '/' {
+			return p[:i]
+		}
+	}
+	return "."
 }
 
 func startWhatsApp(waClient *whatsapp.Client, bot *whatsapp.Bot) {

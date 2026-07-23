@@ -13,23 +13,23 @@ import (
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
 
-	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type MessageHandler func(ctx context.Context, sender string, chat string, evt *events.Message) (string, error)
 
 type Client struct {
 	client *whatsmeow.Client
-	dsn    string
+	dbPath string
 }
 
-func NewClient(dsn string) *Client {
-	return &Client{dsn: dsn}
+func NewClient(dbPath string) *Client {
+	return &Client{dbPath: dbPath}
 }
 
 func (c *Client) Login(ctx context.Context) error {
 	dbLog := waLog.Stdout("database", "ERROR", true)
-	container, err := sqlstore.New(ctx, "mysql", c.dsn, dbLog)
+	container, err := sqlstore.New(ctx, "sqlite3", "file:"+c.dbPath+"?_foreign_keys=on", dbLog)
 	if err != nil {
 		return fmt.Errorf("open db: %w", err)
 	}
