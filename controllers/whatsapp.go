@@ -65,7 +65,9 @@ func (h *WhatsAppHandler) AddWhitelist(c *gin.Context) {
 		return
 	}
 
-	res, err := h.DB.Exec("INSERT INTO whatsapp_whitelist (phone_number) VALUES (?)", input.PhoneNumber)
+	normalized := whatsapp.NormalizePhone(input.PhoneNumber)
+
+	res, err := h.DB.Exec("INSERT INTO whatsapp_whitelist (phone_number) VALUES (?)", normalized)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"status": false, "pesan": "Nomor sudah ada atau tidak valid"})
 		return
@@ -76,13 +78,15 @@ func (h *WhatsAppHandler) AddWhitelist(c *gin.Context) {
 		"status": true,
 		"pesan":  "Nomor berhasil ditambahkan",
 		"data": gin.H{
-			"id": id,
+			"id":           id,
+			"phone_number": normalized,
 		},
 	})
 }
 
 func (h *WhatsAppHandler) DeleteWhitelist(c *gin.Context) {
 	phone := c.Param("phone")
+	phone = whatsapp.NormalizePhone(phone)
 	_, err := h.DB.Exec("DELETE FROM whatsapp_whitelist WHERE phone_number = ?", phone)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"status": false, "pesan": err.Error()})

@@ -19,12 +19,13 @@ import (
 type MessageHandler func(ctx context.Context, sender string, chat string, evt *events.Message) (string, error)
 
 type Client struct {
-	client *whatsmeow.Client
-	dbPath string
+	client       *whatsmeow.Client
+	dbPath       string
+	disconnected chan struct{}
 }
 
 func NewClient(dbPath string) *Client {
-	return &Client{dbPath: dbPath}
+	return &Client{dbPath: dbPath, disconnected: make(chan struct{}, 1)}
 }
 
 func (c *Client) Login(ctx context.Context) error {
@@ -81,12 +82,27 @@ func (c *Client) Start(ctx context.Context, handler MessageHandler) error {
 	c.client.AddEventHandler(func(evt interface{}) {
 		switch v := evt.(type) {
 		case *events.Message:
+			slog.Debug("event received",
+				"is_from_me", v.Info.IsFromMe,
+				"sender", v.Info.Sender.User,
+				"chat", v.Info.Chat.String(),
+				"has_image", v.Message.GetImageMessage() != nil,
+				"has_video", v.Message.GetVideoMessage() != nil,
+				"has_doc", v.Message.GetDocumentMessage() != nil,
+			)
+
 			if v.Info.IsFromMe {
 				return
 			}
 
 			sender := v.Info.Sender.User
 			chat := v.Info.Chat
+
+			slog.Info("incoming message",
+				"from", sender,
+				"chat", chat.String(),
+				"has_media", v.Message.GetImageMessage() != nil || v.Message.GetVideoMessage() != nil || v.Message.GetDocumentMessage() != nil,
+			)
 
 			handlerCtx := ctx
 			if err := ctx.Err(); err != nil {
@@ -99,15 +115,25 @@ func (c *Client) Start(ctx context.Context, handler MessageHandler) error {
 				return
 			}
 			if resp == "" {
+				slog.Info("handler returned empty response (likely not whitelisted or unsupported message)", "from", sender)
 				return
 			}
 
+			slog.Info("sending reply", "to", sender, "response_length", len(resp))
 			_, err = c.client.SendMessage(ctx, chat, &proto.Message{
 				Conversation: &resp,
 			})
 			if err != nil {
 				slog.Error("send message", "error", err)
 			}
+		case *events.Disconnected:
+			slog.Warn("WhatsApp disconnected")
+			select {
+			case c.disconnected <- struct{}{}:
+			default:
+			}
+		case *events.Connected:
+			slog.Info("WhatsApp connected")
 		}
 	})
 	return nil
@@ -125,4 +151,8 @@ func (c *Client) IsLoggedIn() bool {
 
 func (c *Client) Download(ctx context.Context, msg whatsmeow.DownloadableMessage) ([]byte, error) {
 	return c.client.Download(ctx, msg)
+}
+
+func (c *Client) Disconnected() <-chan struct{} {
+	return c.disconnected
 }

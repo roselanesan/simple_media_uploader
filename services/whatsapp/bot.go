@@ -69,7 +69,7 @@ func (b *Bot) Handle(ctx context.Context, sender string, chat string, evt *event
 }
 
 func (b *Bot) isWhitelisted(ctx context.Context, phone string) bool {
-	phone = normalizePhone(phone)
+	phone = NormalizePhone(phone)
 	var id int
 	err := b.db.QueryRowContext(ctx, "SELECT id FROM whatsapp_whitelist WHERE phone_number = ?", phone).Scan(&id)
 	if err != nil {
@@ -199,12 +199,13 @@ func hasMedia(m *proto.Message) bool {
 	return m.GetImageMessage() != nil || m.GetVideoMessage() != nil || m.GetDocumentMessage() != nil
 }
 
-func normalizePhone(phone string) string {
+func NormalizePhone(phone string) string {
 	phone = strings.TrimPrefix(phone, "+")
 	phone = strings.ReplaceAll(phone, " ", "")
 	phone = strings.ReplaceAll(phone, "-", "")
 	return phone
 }
+
 
 func formatSize(bytes int64) string {
 	if bytes < 1024 {

@@ -22,8 +22,14 @@ func NewClient(baseURL, model string) *Client {
 		model = os.Getenv("WHATSAPP_AI_MODEL")
 	}
 
+	opts := []option.RequestOption{option.WithBaseURL(baseURL)}
+
+	if apiKey := os.Getenv("WHATSAPP_AI_API_KEY"); apiKey != "" {
+		opts = append(opts, option.WithAPIKey(apiKey))
+	}
+
 	return &Client{
-		client: openai.NewClient(option.WithBaseURL(baseURL)),
+		client: openai.NewClient(opts...),
 		model:  model,
 	}
 }

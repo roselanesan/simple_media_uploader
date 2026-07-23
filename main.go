@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -40,6 +41,9 @@ func main() {
 		c.HTML(http.StatusOK, "index.html", nil)
 	})
 
+	rootCtx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
 	api := r.Group("/api")
 	{
 		api.POST("/register", auth.Register)
@@ -68,7 +72,7 @@ func main() {
 			authGroup.POST("/whatsapp/whitelist", waHandler.AddWhitelist)
 			authGroup.DELETE("/whatsapp/whitelist/:phone", waHandler.DeleteWhitelist)
 
-			go startWhatsApp(waClient, bot)
+			go startWhatsApp(waClient, bot, rootCtx)
 		}
 	}
 
@@ -77,9 +81,6 @@ func main() {
 		port = "33080"
 	}
 
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
-
 	go func() {
 		log.Println("Server berjalan di port", port)
 		if err := r.Run(":" + port); err != nil && err != http.ErrServerClosed {
@@ -87,7 +88,7 @@ func main() {
 		}
 	}()
 
-	<-ctx.Done()
+	<-rootCtx.Done()
 	log.Println("Shutting down...")
 }
 
@@ -131,15 +132,38 @@ func storeDirOf(p string) string {
 	return "."
 }
 
-func startWhatsApp(waClient *whatsapp.Client, bot *whatsapp.Bot) {
-	ctx := context.Background()
-	if err := waClient.Login(ctx); err != nil {
-		log.Println("WhatsApp login error:", err)
-		return
-	}
-	defer waClient.Logout()
+func startWhatsApp(waClient *whatsapp.Client, bot *whatsapp.Bot, rootCtx context.Context) {
+	for {
+		if rootCtx.Err() != nil {
+			log.Println("WhatsApp shutting down")
+			waClient.Logout()
+			return
+		}
 
-	if err := waClient.Start(ctx, bot.Handle); err != nil {
-		log.Println("WhatsApp start error:", err)
+		log.Println("WhatsApp: connecting...")
+
+		if err := waClient.Login(rootCtx); err != nil {
+			log.Println("WhatsApp login error, retry in 10s:", err)
+			time.Sleep(10 * time.Second)
+			continue
+		}
+
+		if err := waClient.Start(rootCtx, bot.Handle); err != nil {
+			log.Println("WhatsApp start error, retry in 10s:", err)
+			time.Sleep(10 * time.Second)
+			continue
+		}
+
+		log.Println("WhatsApp bot running, waiting for disconnect...")
+
+		select {
+		case <-waClient.Disconnected():
+			log.Println("WhatsApp disconnected, reconnecting in 5s...")
+			time.Sleep(5 * time.Second)
+		case <-rootCtx.Done():
+			log.Println("WhatsApp shutting down")
+			waClient.Logout()
+			return
+		}
 	}
 }
