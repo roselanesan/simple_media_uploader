@@ -13,7 +13,7 @@ import (
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 type MessageHandler func(ctx context.Context, sender string, chat string, evt *events.Message) (string, error)
@@ -29,7 +29,7 @@ func NewClient(dbPath string) *Client {
 
 func (c *Client) Login(ctx context.Context) error {
 	dbLog := waLog.Stdout("database", "ERROR", true)
-	container, err := sqlstore.New(ctx, "sqlite3", "file:"+c.dbPath+"?_foreign_keys=on", dbLog)
+	container, err := sqlstore.New(ctx, "sqlite", "file:"+c.dbPath+"?_foreign_keys=on", dbLog)
 	if err != nil {
 		return fmt.Errorf("open db: %w", err)
 	}
