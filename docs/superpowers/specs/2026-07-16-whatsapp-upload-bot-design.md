@@ -45,11 +45,9 @@ Send public URL back to WhatsApp user
 
 ### AI Chat Flow
 ```
-WhatsApp Message from whitelist number
+WhatsApp text message from whitelist number (no prefix needed)
         ↓
-If text starts with prefix [ai]
-        ↓
-Send prompt to OpenAI-compatible API (9router)
+Send text to OpenAI-compatible API (9router)
         ↓
 Send AI response back to WhatsApp user
 ```
@@ -88,7 +86,7 @@ Adaptasi dari `whatsapp-ai/internal/whatsapp/client.go`:
 Logic handler message:
 - **Whitelist check**: hanya proses nomor yang ada di `whatsapp_whitelist`.
 - **Upload command**: jika pesan diawali `!upload` dan ada media attachment (`ImageMessage`, `VideoMessage`, `DocumentMessage`), download bytes + filename + mimetype + size, upload ke R2 dengan key `uploads/wa/<timestamp><ext>`, simpan metadata, balas URL.
-- **AI chat**: jika pesan diawali `[ai]`, kirim prompt ke OpenAI-compatible API (9router), balas hasilnya.
+- **AI chat**: jika pesan berupa teks biasa (bukan command), langsung kirim ke OpenAI-compatible API (9router), balas hasilnya.
 - **Ignore**: semua pesan lain di-abaikan.
 
 ### 3. `services/ai/openai.go`
@@ -108,7 +106,6 @@ Tambah di `.env.example`:
 
 ```
 WHATSAPP_ENABLED=true
-WHATSAPP_AI_PREFIX=[ai]
 WHATSAPP_UPLOAD_PREFIX=!upload
 WHATSAPP_AI_BASEURL=https://9router.roselaa.my.id/v1
 WHATSAPP_AI_MODEL=qwen2.5:0.5b
@@ -144,7 +141,7 @@ WHATSAPP_AI_API_KEY=optional-api-key
 - [ ] Kirim `!upload` + gambar dari nomor whitelist → file muncul di R2 dashboard.
 - [ ] Metadata tersimpan di MySQL dengan `source = 'whatsapp'`.
 - [ ] Bot membalas dengan public URL yang bisa dibuka.
-- [ ] Kirim `[ai] halo` dari nomor whitelist → bot membalas dari 9router.
+- [ ] Kirim `halo` dari nomor whitelist → bot membalas dari 9router.
 - [ ] Dashboard web tetap bisa upload file normal.
 - [ ] Graceful shutdown tidak crash.
 
