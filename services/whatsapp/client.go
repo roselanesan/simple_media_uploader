@@ -29,7 +29,7 @@ func NewClient(dbPath string) *Client {
 
 func (c *Client) Login(ctx context.Context) error {
 	dbLog := waLog.Stdout("database", "ERROR", true)
-	container, err := sqlstore.New(ctx, "sqlite", "file:"+c.dbPath+"?_foreign_keys=on", dbLog)
+	container, err := sqlstore.New(ctx, "sqlite", "file:"+c.dbPath+"?_pragma=foreign_keys(1)", dbLog)
 	if err != nil {
 		return fmt.Errorf("open db: %w", err)
 	}
